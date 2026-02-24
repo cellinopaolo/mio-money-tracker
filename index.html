@@ -15,9 +15,13 @@
         .animate-slide-up { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .swipe-container { transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1); touch-action: pan-y; }
         .delete-btn { position: absolute; right: 0; top: 0; bottom: 0; width: 85px; background: #ef4444; color: white; display: flex; align-items: center; justify-content: center; border-radius: 1.5rem; font-weight: bold; z-index: 1; }
+        /* Stile per il Pull-to-Refresh */
+        #ptr { text-align: center; height: 0; overflow: hidden; transition: height 0.2s; background: #f8fafc; color: #94a3b8; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
     </style>
 </head>
 <body class="bg-slate-50 pb-32 font-sans text-slate-900 overflow-x-hidden">
+
+    <div id="ptr">Aggiornamento...</div>
 
     <div class="p-6 bg-white shadow-sm border-b sticky top-0 z-40">
         <div class="flex justify-between items-center mb-2">
@@ -82,9 +86,8 @@
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let currentDate = new Date();
-        let xDown = null;
-        let yDown = null;
-        let activeSwipeElement = null;
+        let xDown = null, yDown = null, activeSwipeElement = null;
+        let startY = 0;
 
         const ctx = document.getElementById('myChart').getContext('2d');
         let myChart = new Chart(ctx, {
@@ -93,14 +96,39 @@
             options: { cutout: '80%', plugins: { legend: { display: false } } }
         });
 
-        // --- GESTIONE SWIPE ---
-        function handleTouchStart(evt) {
-            xDown = evt.touches[0].clientX;
-            yDown = evt.touches[0].clientY;
-        }
+        // --- PULL TO REFRESH ---
+        window.addEventListener('touchstart', (e) => { 
+            startY = e.touches[0].pageY; 
+            xDown = e.touches[0].clientX;
+            yDown = e.touches[0].clientY;
+        }, {passive: true});
 
-        function handleTouchMove(evt, element) {
-            if (!xDown || !yDown) return;
+        window.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            const diffY = touch.pageY - startY;
+
+            // Logica Refresh: se siamo in cima e trasciniamo giù
+            if (window.scrollY === 0 && diffY > 0) {
+                const ptr = document.getElementById('ptr');
+                ptr.style.height = Math.min(diffY, 60) + 'px';
+                if (diffY > 60) {
+                    location.reload(); // Forza ricarica completa
+                }
+            }
+
+            // Logica Swipe Transazioni
+            if (activeSwipeElement || Math.abs(xDown - touch.clientX) > 10) {
+                // Cerchiamo l'elemento swipe-container più vicino
+                const container = e.target.closest('.swipe-container');
+                if (container) handleSwipeLogic(e, container);
+            }
+        }, {passive: false});
+
+        window.addEventListener('touchend', () => {
+            document.getElementById('ptr').style.height = '0px';
+        });
+
+        function handleSwipeLogic(evt, element) {
             let xUp = evt.touches[0].clientX;
             let yUp = evt.touches[0].clientY;
             let xDiff = xDown - xUp;
@@ -108,50 +136,24 @@
 
             if (Math.abs(xDiff) > Math.abs(yDiff)) {
                 if (evt.cancelable) evt.preventDefault();
-                if (xDiff > 10) { 
+                if (xDiff > 15) { 
                     if (activeSwipeElement && activeSwipeElement !== element) activeSwipeElement.style.transform = 'translateX(0)';
                     element.style.transform = 'translateX(-85px)';
                     activeSwipeElement = element;
-                } else if (xDiff < -10) { 
+                } else if (xDiff < -15) { 
                     element.style.transform = 'translateX(0)';
                     activeSwipeElement = null;
                 }
             }
         }
 
+        // --- LOGICA CORE ---
         function changeMonth(delta) {
             currentDate.setMonth(currentDate.getMonth() + delta);
             updateUI();
         }
 
-        async function checkAutomatismi() {
-            const oggi = new Date();
-            const primoMese = new Date(oggi.getFullYear(), oggi.getMonth(), 1).toISOString();
-            const giornoCorrente = oggi.getDate();
-
-            const { data: subs } = await supabaseClient.from('subscriptions').select('*');
-            for (const s of subs || []) {
-                if (giornoCorrente >= s.data_prelievo) {
-                    const { data: ex } = await supabaseClient.from('transactions').select('*').eq('descrizione', `AUTO-SUB: ${s.nome}`).gte('data_transazione', primoMese);
-                    if (!ex || ex.length === 0) {
-                        await supabaseClient.from('transactions').insert([{ tipo: 'uscita', categoria: 'Abbonamenti 📺', importo: s.costo, metodo_pagamento: 'Carta', descrizione: `AUTO-SUB: ${s.nome}`, data_transazione: oggi.toISOString().split('T')[0] }]);
-                    }
-                }
-            }
-
-            const { data: savings } = await supabaseClient.from('savings').select('*');
-            for (const p of savings || []) {
-                if (giornoCorrente >= p.giorno_prelievo) {
-                    const { data: ex } = await supabaseClient.from('transactions').select('*').eq('descrizione', `AUTO-PAC: ${p.nome_piano}`).gte('data_transazione', primoMese);
-                    if (!ex || ex.length === 0) {
-                        await supabaseClient.from('transactions').insert([{ tipo: 'uscita', categoria: 'Risparmi 💰', importo: p.importo_mensile, metodo_pagamento: 'Conto', descrizione: `AUTO-PAC: ${p.nome_piano}`, data_transazione: oggi.toISOString().split('T')[0] }]);
-                    }
-                }
-            }
-        }
-
         async function updateUI() {
-            await checkAutomatismi();
             const monthNames = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
             document.getElementById('currentMonthDisplay').innerText = `${monthNames[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
             
@@ -169,7 +171,7 @@
             let listHtml = '';
 
             if (riporto !== 0) {
-                listHtml += `<div class="bg-blue-50 p-4 rounded-2xl flex justify-between items-center border border-blue-100 mb-2"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-lg">🏦</div><div><p class="font-bold text-sm text-blue-900 italic">Saldo mesi passati</p></div></div><p class="font-black ${riporto > 0 ? 'text-blue-600' : 'text-red-600'}">€ ${riporto.toFixed(2)}</p></div>`;
+                listHtml += `<div class="bg-blue-50 p-4 rounded-2xl flex justify-between items-center border border-blue-100 mb-2"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-lg">🏦</div><div><p class="font-bold text-sm text-blue-900 italic">Saldo mesi precedenti</p></div></div><p class="font-black ${riporto > 0 ? 'text-blue-600' : 'text-red-600'}">€ ${riporto.toFixed(2)}</p></div>`;
             }
 
             currentData?.forEach(t => {
@@ -179,9 +181,7 @@
                 listHtml += `
                 <div class="relative overflow-hidden rounded-2xl mb-3 shadow-sm">
                     <div class="delete-btn" onclick="deleteTransaction(${t.id})">Elimina</div>
-                    <div class="swipe-container bg-white p-4 relative z-10 flex justify-between items-center border border-slate-100 rounded-2xl" 
-                         ontouchstart="handleTouchStart(event)" 
-                         ontouchmove="handleTouchMove(event, this)">
+                    <div class="swipe-container bg-white p-4 relative z-10 flex justify-between items-center border border-slate-100 rounded-2xl">
                         <div class="flex items-center gap-3">
                             <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-lg border border-slate-50">${t.categoria.split(' ').pop()}</div>
                             <div>
@@ -199,7 +199,7 @@
             const saldoTotaleReale = riporto + saldoMese;
             document.getElementById('totalBalance').innerText = `€ ${saldoTotaleReale.toFixed(2)}`;
             document.getElementById('totalBalance').className = saldoTotaleReale >= 0 ? "text-3xl font-black text-emerald-600 text-center" : "text-3xl font-black text-red-600 text-center";
-            document.getElementById('transactionList').innerHTML = listHtml || '<p class="text-center text-slate-400 py-10">Nessun movimento</p>';
+            document.getElementById('transactionList').innerHTML = listHtml || '<p class="text-center text-slate-400 py-10 italic">Nessun movimento</p>';
             
             myChart.data.labels = Object.keys(aggregato);
             myChart.data.datasets[0].data = Object.values(aggregato);
@@ -235,7 +235,6 @@
             closeModal();
             updateUI();
             document.getElementById('transactionForm').reset();
-            document.getElementById('data').valueAsDate = new Date();
         };
 
         updateUI();
