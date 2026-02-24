@@ -13,12 +13,9 @@
         @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .animate-slide-up { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .swipe-container { transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1); touch-action: pan-y; }
-        
-        /* Nuova area azioni swipe */
         .actions-container { position: absolute; right: 0; top: 0; bottom: 0; width: 160px; display: flex; z-index: 1; }
         .edit-btn { width: 80px; background: #3b82f6; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 0; }
         .delete-btn { width: 80px; background: #ef4444; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 0 1.5rem 1.5rem 0; }
-        
         #ptr { text-align: center; height: 0; overflow: hidden; transition: height 0.2s; background: #f8fafc; color: #94a3b8; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
     </style>
 </head>
@@ -54,7 +51,7 @@
     </div>
 
     <nav class="fixed bottom-0 w-full bg-white border-t flex justify-around p-4 text-[10px] font-bold text-gray-400 z-40">
-        <a href="./" class="text-slate-800 flex flex-col items-center gap-1">🏠 <span>Home</span></a>
+        <a href="index.html" class="text-slate-800 flex flex-col items-center gap-1">🏠 <span>Home</span></a>
         <a href="risparmi.html" class="flex flex-col items-center gap-1">💰 <span>Risparmi</span></a>
         <a href="abbonamenti.html" class="flex flex-col items-center gap-1">📺 <span>Abbonamenti</span></a>
         <a href="satispay.html" class="flex flex-col items-center gap-1">📱 <span>Satispay</span></a>
@@ -90,7 +87,7 @@
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         let currentDate = new Date();
-        let xDown = null, yDown = null, activeSwipeElement = null;
+        let xDown = null, activeSwipeElement = null;
 
         const ctx = document.getElementById('myChart').getContext('2d');
         let myChart = new Chart(ctx, {
@@ -99,17 +96,13 @@
             options: { cutout: '80%', plugins: { legend: { display: false } } }
         });
 
-        // Swipe Logic aggiornata per due tasti
-        window.addEventListener('touchstart', (e) => { 
-            xDown = e.touches[0].clientX; yDown = e.touches[0].clientY;
-        }, {passive: true});
-
+        // Swipe Logic
+        window.addEventListener('touchstart', (e) => { xDown = e.touches[0].clientX; }, {passive: true});
         window.addEventListener('touchmove', (e) => {
             const container = e.target.closest('.swipe-container');
             if (container) {
-                let xUp = e.touches[0].clientX;
-                let xDiff = xDown - xUp;
-                if (Math.abs(xDiff) > 15) {
+                let xDiff = xDown - e.touches[0].clientX;
+                if (Math.abs(xDiff) > 20) {
                     if (xDiff > 0) container.style.transform = 'translateX(-160px)';
                     else container.style.transform = 'translateX(0)';
                     activeSwipeElement = container;
@@ -159,8 +152,7 @@
                 </div>`;
             });
 
-            const saldoTotaleReale = riporto + saldoMese;
-            document.getElementById('totalBalance').innerText = `€ ${saldoTotaleReale.toFixed(2)}`;
+            document.getElementById('totalBalance').innerText = `€ ${(riporto + saldoMese).toFixed(2)}`;
             document.getElementById('transactionList').innerHTML = listHtml || '<p class="text-center text-slate-400 py-10 italic">Nessun movimento</p>';
             
             myChart.data.labels = Object.keys(aggregato);
@@ -168,7 +160,34 @@
             myChart.update();
         }
 
-        // Funzione per caricare i dati nella modale per la modifica
+        async function checkAutomaticSavings() {
+            const oggi = new Date();
+            const giornoOggi = oggi.getDate();
+            const dataOggiISO = oggi.toISOString().split('T')[0];
+            const meseCorrente = oggi.getMonth();
+            const annoCorrente = oggi.getFullYear();
+
+            const { data: piani } = await supabaseClient.from('savings_plans').select('*').eq('giorno_prelievo', giornoOggi);
+            if (!piani) return;
+
+            for (const piano of piani) {
+                const ultimoVersamento = piano.ultimo_versamento ? new Date(piano.ultimo_versamento) : null;
+                const giaVersato = ultimoVersamento && ultimoVersamento.getMonth() === meseCorrente && ultimoVersamento.getFullYear() === annoCorrente;
+
+                if (!giaVersato && piano.importo_mensile > 0) {
+                    await supabaseClient.from('transactions').insert([{
+                        tipo: 'uscita', categoria: 'Risparmi 💰', importo: piano.importo_mensile,
+                        metodo_pagamento: 'Contanti', descrizione: `Auto PAC: ${piano.nome}`, data_transazione: dataOggiISO
+                    }]);
+                    await supabaseClient.from('savings_plans').update({
+                        attuale: parseFloat(piano.attuale) + parseFloat(piano.importo_mensile),
+                        ultimo_versamento: dataOggiISO
+                    }).eq('id', piano.id);
+                }
+            }
+            updateUI();
+        }
+
         function prepareEdit(t) {
             openModal(t.tipo);
             document.getElementById('modalTitle').innerText = "Modifica Operazione";
@@ -185,9 +204,7 @@
             document.getElementById('modalTitle').innerText = "Nuova Operazione";
             document.getElementById('edit_id').value = "";
             document.getElementById('tipo').value = tipo;
-            const cats = tipo === 'entrata' ? 
-                ["Stipendio 💰", "Regalo 🎁", "Extra 📈"] : 
-                ["Spesa 🛒", "Cibo 🍕", "Svago 🍿", "Affitto 🏠", "Trasporti 🚗", "Telefono 📱", "Abbonamenti 📺", "Salute 💊", "Risparmi 💰"];
+            const cats = tipo === 'entrata' ? ["Stipendio 💰", "Regalo 🎁", "Extra 📈"] : ["Spesa 🛒", "Cibo 🍕", "Svago 🍿", "Affitto 🏠", "Trasporti 🚗", "Telefono 📱", "Abbonamenti 📺", "Salute 💊", "Risparmi 💰"];
             document.getElementById('categoria').innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
             document.getElementById('modal').classList.remove('hidden');
         }
@@ -205,26 +222,21 @@
                 descrizione: document.getElementById('descrizione').value,
                 data_transazione: document.getElementById('data').value
             };
-
-            if (id) {
-                await supabaseClient.from('transactions').update(payload).eq('id', id);
-            } else {
-                await supabaseClient.from('transactions').insert([payload]);
-            }
-            
+            if (id) await supabaseClient.from('transactions').update(payload).eq('id', id);
+            else await supabaseClient.from('transactions').insert([payload]);
             closeModal();
             updateUI();
         };
 
         async function deleteTransaction(id) {
-            if(confirm("Eliminare?")) {
-                await supabaseClient.from('transactions').delete().eq('id', id);
-                updateUI();
-            }
+            if(confirm("Eliminare?")) { await supabaseClient.from('transactions').delete().eq('id', id); updateUI(); }
         }
 
         function changeMonth(delta) { currentDate.setMonth(currentDate.getMonth() + delta); updateUI(); }
+        
+        // Init
         updateUI();
+        checkAutomaticSavings();
     </script>
 </body>
 </html>
