@@ -3,75 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Satispay - MoneyTracker</title>
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077976.png">
-    
+    <title>Gestione Satispay</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-slate-50 pb-24 font-sans text-slate-900">
-    <div class="p-6 bg-white shadow-sm border-b sticky top-0 flex justify-between items-center z-10">
-        <h1 class="text-xl font-bold text-slate-800">📱 Satispay</h1>
-        <a href="./" class="text-blue-500 font-bold text-sm">← Home</a>
+<body class="bg-slate-50 pb-32 font-sans text-slate-900">
+
+    <div class="p-6 bg-white shadow-sm border-b sticky top-0 z-40">
+        <h1 class="text-xl font-black uppercase tracking-widest text-slate-800 text-center">Credito Satispay</h1>
     </div>
 
-    <div class="m-4 p-6 bg-white rounded-3xl shadow-sm border border-blue-100">
-        <label class="block text-xs font-black text-gray-400 uppercase mb-3 tracking-widest">Carica Buoni (€)</label>
-        <div class="flex gap-2">
-            <input type="number" id="budgetBuoni" class="w-full p-4 bg-slate-100 rounded-2xl border-none font-bold text-blue-600 text-lg" placeholder="Es. 120">
-            <button onclick="salvaBudget()" class="bg-blue-600 text-white px-6 rounded-2xl font-bold shadow-lg active:scale-95 transition-transform">OK</button>
+    <div class="m-4 p-6 bg-rose-500 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden">
+        <div class="relative z-10">
+            <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-80 mb-1">Ancora da ricevere</p>
+            <h2 id="satispayDebt" class="text-4xl font-black">€ 0.00</h2>
+            <button onclick="resetSatispay()" class="mt-4 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-xs font-bold transition-all">
+                Segna rimborsi come ricevuti ✅
+            </button>
         </div>
-        <div class="mt-4 flex justify-between items-center bg-blue-50 p-3 rounded-xl">
-            <span class="text-xs font-bold text-blue-800 uppercase font-black uppercase tracking-widest">Residuo:</span>
-            <span id="residuoBuoni" class="font-black text-blue-600">€ 0.00</span>
-        </div>
+        <div class="absolute right-[-20px] bottom-[-20px] text-white/10 text-9xl font-black">€</div>
     </div>
 
-    <div class="mx-4 grid grid-cols-2 gap-4">
-        <div class="bg-emerald-500 p-5 rounded-3xl shadow-lg text-white text-center">
-            <p class="text-[10px] font-black uppercase opacity-80">Buoni Usati</p>
-            <p id="totaleBuoniUsati" class="text-xl font-black mt-1">€ 0.00</p>
+    <div class="mx-4 space-y-3" id="satispayList">
         </div>
-        <div class="bg-slate-800 p-5 rounded-3xl shadow-lg text-white text-center">
-            <p class="text-[10px] font-black uppercase opacity-80">Tasca Mia</p>
-            <p id="totaleTasca" class="text-xl font-black mt-1">€ 0.00</p>
-        </div>
-    </div>
 
-    <div class="m-4 space-y-3" id="satispayList"></div>
+    <nav class="fixed bottom-0 w-full bg-white border-t flex justify-around p-4 text-[10px] font-bold text-gray-400 z-40">
+        <a href="index.html" class="flex flex-col items-center gap-1">🏠 <span>Home</span></a>
+        <a href="risparmi.html" class="flex flex-col items-center gap-1">💰 <span>Risparmi</span></a>
+        <a href="abbonamenti.html" class="flex flex-col items-center gap-1">📺 <span>Abbonamenti</span></a>
+        <a href="satispay.html" class="text-slate-800 flex flex-col items-center gap-1">📱 <span>Satispay</span></a>
+        <a href="analisi.html" class="flex flex-col items-center gap-1">📈 <span>Analisi</span></a>
+    </nav>
 
     <script>
         const SUPABASE_URL = 'https://vdbgzqzquuvvcqgntsgh.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkYmd6cXpxdXV2dmNxZ250c2doIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MjY2MDEsImV4cCI6MjA4NzUwMjYwMX0.pTjNAQ6dYb0zNbL7DW2yf9ud50tsn1GrfIsX1XA0oXE';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        function salvaBudget() {
-            localStorage.setItem('budgetBuoni', document.getElementById('budgetBuoni').value);
-            calcolaDatiSatispay();
-        }
+        async function loadSatispay() {
+            // Prendi solo le transazioni Satispay NON rimborsate
+            const { data: trans } = await supabaseClient
+                .from('transactions')
+                .select('*')
+                .eq('metodo_pagamento', 'Satispay')
+                .eq('rimborsato', false)
+                .order('data_transazione', {ascending: false});
 
-        async function calcolaDatiSatispay() {
-            const { data } = await supabaseClient.from('transactions').select('*').eq('metodo_pagamento', 'Satispay').order('data_transazione', { ascending: false });
-            let totBuoni = 0, totTasca = 0, html = '';
-            data?.forEach(t => {
-                const nBuoni = Math.floor(t.importo / 6);
-                const valBuoni = nBuoni * 6;
-                totBuoni += valBuoni; totTasca += (t.importo - valBuoni);
-                html += `<div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex justify-between items-center">
-                    <div><p class="font-black text-slate-800">${t.descrizione || t.categoria}</p><p class="text-[10px] text-gray-400 font-bold">${t.data_transazione}</p></div>
-                    <div class="text-right"><p class="font-black text-slate-900">€ ${t.importo.toFixed(2)}</p><p class="text-[10px] text-emerald-600 font-black uppercase tracking-widest">Buoni: €${valBuoni}</p></div>
+            let listHtml = '';
+            let totaleDebito = 0;
+
+            trans?.forEach(t => {
+                totaleDebito += t.importo;
+                listHtml += `
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
+                    <div>
+                        <p class="font-bold text-slate-800">${t.descrizione || t.categoria}</p>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase">${t.data_transazione}</p>
+                    </div>
+                    <p class="font-black text-rose-500">€ ${t.importo.toFixed(2)}</p>
                 </div>`;
             });
-            document.getElementById('totaleBuoniUsati').innerText = `€ ${totBuoni.toFixed(2)}`;
-            document.getElementById('totaleTasca').innerText = `€ ${totTasca.toFixed(2)}`;
-            document.getElementById('satispayList').innerHTML = html;
-            const budget = parseFloat(localStorage.getItem('budgetBuoni')) || 0;
-            document.getElementById('residuoBuoni').innerText = `€ ${(budget - totBuoni).toFixed(2)}`;
+
+            document.getElementById('satispayDebt').innerText = `€ ${totaleDebito.toFixed(2)}`;
+            document.getElementById('satispayList').innerHTML = listHtml || '<p class="text-center text-slate-400 py-10 italic">Nessun debito in sospeso</p>';
         }
-        document.getElementById('budgetBuoni').value = localStorage.getItem('budgetBuoni');
-        calcolaDatiSatispay();
+
+        async function resetSatispay() {
+            if(confirm("Vuoi azzerare il debito attuale? Le transazioni rimarranno nello storico ma non verranno più conteggiate qui.")) {
+                const { error } = await supabaseClient
+                    .from('transactions')
+                    .update({ rimborsato: true })
+                    .eq('metodo_pagamento', 'Satispay')
+                    .eq('rimborsato', false);
+
+                if(!error) {
+                    alert("Debito azzerato con successo!");
+                    loadSatispay();
+                }
+            }
+        }
+
+        loadSatispay();
     </script>
 </body>
 </html>
