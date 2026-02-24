@@ -43,16 +43,29 @@
             <form id="savingForm" class="space-y-4">
                 <input type="hidden" id="edit_id">
                 <input type="text" id="nome" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" placeholder="Nome (es. Vacanze 🏝️)" required>
+                
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Attuale (€)</label>
-                        <input type="number" id="attuale" step="0.01" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" placeholder="0.00" required>
+                        <input type="number" id="attuale" step="0.01" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" required>
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Target (€)</label>
-                        <input type="number" id="target" step="0.01" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" placeholder="1000.00" required>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Target Finale (€)</label>
+                        <input type="number" id="target" step="0.01" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" required>
                     </div>
                 </div>
+
+                <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">Giorno Prelievo</label>
+                        <input type="number" id="giorno_prelievo" min="1" max="31" class="w-full bg-transparent font-bold border-b border-slate-200 py-1" placeholder="Es. 1">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase">Quota Mensile (€)</label>
+                        <input type="number" id="importo_mensile" step="0.01" class="w-full bg-transparent font-bold border-b border-slate-200 py-1" placeholder="0.00">
+                    </div>
+                </div>
+
                 <div class="flex gap-4 pt-4">
                     <button type="button" onclick="closeModal()" class="flex-1 py-4 text-gray-400 font-bold">Annulla</button>
                     <button type="submit" class="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold shadow-lg">Salva</button>
@@ -70,20 +83,15 @@
 
         async function fetchSavings() {
             const container = document.getElementById('savingsList');
-            
-            const { data, error } = await supabaseClient
-                .from('savings_plans')
-                .select('*')
-                .order('created_at', { ascending: true });
+            const { data, error } = await supabaseClient.from('savings_plans').select('*').order('created_at', { ascending: true });
 
             if (error) {
-                console.error("Errore:", error);
-                container.innerHTML = `<p class="text-center text-red-500 py-20 font-bold">Errore di connessione al database</p>`;
+                container.innerHTML = `<p class="text-center text-red-500 py-20 font-bold">Errore database</p>`;
                 return;
             }
 
             if (!data || data.length === 0) {
-                container.innerHTML = `<p class="text-center text-slate-400 py-20 italic">Nessun piano trovato.<br>Aggiungine uno con il tasto +</p>`;
+                container.innerHTML = `<p class="text-center text-slate-400 py-20 italic">Nessun piano trovato</p>`;
                 return;
             }
 
@@ -93,8 +101,8 @@
                 html += `
                 <div class="relative overflow-hidden rounded-[2rem] shadow-sm bg-slate-200 mb-4">
                     <div class="actions-container">
-                        <div class="edit-btn" onclick="prepareEdit(${JSON.stringify(plan).replace(/"/g, '&quot;')})">Modifica</div>
-                        <div class="delete-btn" onclick="deletePlan(${plan.id})">Elimina</div>
+                        <div class="edit-btn" onclick="prepareEdit(${JSON.stringify(plan).replace(/"/g, '&quot;')})">Edit</div>
+                        <div class="delete-btn" onclick="deletePlan(${plan.id})">Del</div>
                     </div>
                     <div class="swipe-container bg-white p-6 relative z-10 border border-slate-100 rounded-[2rem]">
                         <div class="flex justify-between items-center mb-4">
@@ -108,6 +116,7 @@
                             <span>€ ${parseFloat(plan.attuale).toFixed(2)}</span>
                             <span>Target: € ${parseFloat(plan.target).toFixed(2)}</span>
                         </div>
+                        ${plan.importo_mensile > 0 ? `<p class="text-[9px] mt-2 font-bold text-slate-300">Auto-versamento: €${plan.importo_mensile}/mese il giorno ${plan.giorno_prelievo}</p>` : ''}
                     </div>
                 </div>`;
             });
@@ -121,12 +130,8 @@
                 el.addEventListener('touchmove', e => {
                     if (!xDown) return;
                     let xDiff = xDown - e.touches[0].clientX;
-                    if (xDiff > 40) {
-                        el.style.transform = 'translateX(-160px)';
-                        activeSwipeElement = el;
-                    } else if (xDiff < -40) {
-                        el.style.transform = 'translateX(0)';
-                    }
+                    if (xDiff > 40) { el.style.transform = 'translateX(-160px)'; activeSwipeElement = el; }
+                    else if (xDiff < -40) { el.style.transform = 'translateX(0)'; }
                 }, {passive: true});
             });
         }
@@ -144,6 +149,8 @@
             document.getElementById('nome').value = plan.nome;
             document.getElementById('attuale').value = plan.attuale;
             document.getElementById('target').value = plan.target;
+            document.getElementById('giorno_prelievo').value = plan.giorno_prelievo || "";
+            document.getElementById('importo_mensile').value = plan.importo_mensile || "";
             document.getElementById('modal').classList.remove('hidden');
             if (activeSwipeElement) activeSwipeElement.style.transform = 'translateX(0)';
         }
@@ -156,26 +163,20 @@
             const payload = {
                 nome: document.getElementById('nome').value,
                 attuale: parseFloat(document.getElementById('attuale').value),
-                target: parseFloat(document.getElementById('target').value)
+                target: parseFloat(document.getElementById('target').value),
+                giorno_prelievo: parseInt(document.getElementById('giorno_prelievo').value) || 1,
+                importo_mensile: parseFloat(document.getElementById('importo_mensile').value) || 0
             };
-
-            if (id) {
-                await supabaseClient.from('savings_plans').update(payload).eq('id', id);
-            } else {
-                await supabaseClient.from('savings_plans').insert([payload]);
-            }
+            if (id) await supabaseClient.from('savings_plans').update(payload).eq('id', id);
+            else await supabaseClient.from('savings_plans').insert([payload]);
             closeModal();
             fetchSavings();
         };
 
         async function deletePlan(id) {
-            if(confirm("Vuoi eliminare questo piano?")) {
-                await supabaseClient.from('savings_plans').delete().eq('id', id);
-                fetchSavings();
-            }
+            if(confirm("Eliminare?")) { await supabaseClient.from('savings_plans').delete().eq('id', id); fetchSavings(); }
         }
 
-        // Avvio
         fetchSavings();
     </script>
 </body>
