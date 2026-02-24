@@ -2,25 +2,28 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analisi AI - MoneyTracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Analisi - MoneyTracker</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077976.png">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-slate-50 pb-24 font-sans">
-
+<body class="bg-slate-50 pb-24 font-sans text-slate-900">
     <div class="p-6 bg-white shadow-sm border-b sticky top-0 flex justify-between items-center z-10">
         <h1 class="text-xl font-bold text-slate-800">📈 Analisi AI</h1>
-        <a href="index.html" class="text-blue-500 font-bold text-sm">← Home</a>
+        <a href="./" class="text-blue-500 font-bold text-sm">← Home</a>
     </div>
 
     <div class="m-4 grid grid-cols-2 gap-4">
-        <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Entrate Mese</p>
+        <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 text-center">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Entrate</p>
             <p id="entrateMese" class="text-lg font-black text-emerald-600">€ 0.00</p>
         </div>
-        <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Uscite Mese</p>
+        <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 text-center">
+            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Uscite</p>
             <p id="usciteMese" class="text-lg font-black text-red-500">€ 0.00</p>
         </div>
     </div>
@@ -29,15 +32,11 @@
         <div class="relative z-10">
             <div class="flex items-center gap-2 mb-4">
                 <span class="bg-blue-500 p-2 rounded-lg text-lg">🤖</span>
-                <h2 class="font-bold text-blue-400 uppercase text-xs tracking-tighter">Il tuo Assistente AI dice:</h2>
+                <h2 class="font-bold text-blue-400 uppercase text-xs tracking-tighter">Analisi Assistente:</h2>
             </div>
-            <p id="aiInsight" class="text-sm leading-relaxed font-medium">Sto analizzando i tuoi movimenti... dammi un secondo.</p>
+            <p id="aiInsight" class="text-sm leading-relaxed font-medium">Calcolo analisi in corso...</p>
         </div>
         <div class="absolute -right-10 -bottom-10 w-32 h-32 bg-blue-600 rounded-full blur-3xl opacity-20"></div>
-    </div>
-
-    <div id="savingsTip" class="hidden m-4 p-6 bg-emerald-50 rounded-3xl border border-emerald-100">
-        <p class="text-emerald-800 text-sm font-semibold italic">💡 "Potresti spostare €50 in più nel tuo PAC questo mese senza problemi!"</p>
     </div>
 
     <script>
@@ -46,50 +45,21 @@
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         async function generaAnalisi() {
-            const oggi = new Date();
-            const primoDelMese = new Date(oggi.getFullYear(), oggi.getMonth(), 1).toISOString();
+            const primoMese = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+            const { data } = await supabaseClient.from('transactions').select('*').gte('data_transazione', primoMese);
+            
+            let inT = 0, outT = 0;
+            data?.forEach(t => { if(t.tipo === 'entrata') inT += t.importo; else outT += t.importo; });
 
-            const { data: transazioni } = await supabaseClient
-                .from('transactions')
-                .select('*')
-                .gte('data_transazione', primoDelMese);
+            document.getElementById('entrateMese').innerText = `€ ${inT.toFixed(2)}`;
+            document.getElementById('usciteMese').innerText = `€ ${outT.toFixed(2)}`;
 
-            if (!transazioni) return;
-
-            let inTot = 0, outTot = 0, svago = 0, spesa = 0;
-
-            transazioni.forEach(t => {
-                if (t.tipo === 'entrata') inTot += t.importo;
-                else {
-                    outTot += t.importo;
-                    if (t.categoria.includes("Svago")) svago += t.importo;
-                    if (t.categoria.includes("Spesa")) spesa += t.importo;
-                }
-            });
-
-            document.getElementById('entrateMese').innerText = `€ ${inTot.toFixed(2)}`;
-            document.getElementById('usciteMese').innerText = `€ ${outTot.toFixed(2)}`;
-
-            // --- LOGICA AI INSIGHTS ---
             let insight = "";
-            const balance = inTot - outTot;
-
-            if (outTot === 0) {
-                insight = "Non ho ancora dati sulle tue spese. Inizia a segnare qualcosa per ricevere i miei consigli!";
-            } else if (balance < 0) {
-                insight = "Attenzione! Questo mese sei in rosso di €" + Math.abs(balance).toFixed(2) + ". Ti consiglio di tagliare le spese superflue nelle prossime 2 settimane.";
-            } else if (svago > outTot * 0.4) {
-                insight = "Stai spendendo molto in svago (più del 40% delle tue uscite). Forse potresti goderti qualche serata in casa per risparmiare!";
-            } else if (balance > (inTot * 0.2)) {
-                insight = "Ottimo lavoro! Hai risparmiato più del 20% delle tue entrate. Sei sulla strada giusta per i tuoi obiettivi.";
-                document.getElementById('savingsTip').classList.remove('hidden');
-            } else {
-                insight = "La tua gestione finanziaria è equilibrata. Continua così e cerca di monitorare la categoria '" + (svago > spesa ? "Svago" : "Spesa") + "'!";
-            }
-
+            if (outT > inT) insight = "Attenzione, questo mese le uscite superano le entrate. Cerca di monitorare le prossime spese!";
+            else if (inT === 0) insight = "Nessun dato per questo mese. Aggiungi entrate o uscite per iniziare.";
+            else insight = "Ottima gestione! Stai mantenendo un saldo positivo. Continua così per raggiungere i tuoi obiettivi.";
             document.getElementById('aiInsight').innerText = insight;
         }
-
         generaAnalisi();
     </script>
 </body>
