@@ -6,7 +6,6 @@
     <title>MoneyTracker AI</title>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077976.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -14,8 +13,12 @@
         @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .animate-slide-up { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         .swipe-container { transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1); touch-action: pan-y; }
-        .delete-btn { position: absolute; right: 0; top: 0; bottom: 0; width: 85px; background: #ef4444; color: white; display: flex; align-items: center; justify-content: center; border-radius: 1.5rem; font-weight: bold; z-index: 1; }
-        /* Stile per il Pull-to-Refresh */
+        
+        /* Nuova area azioni swipe */
+        .actions-container { position: absolute; right: 0; top: 0; bottom: 0; width: 160px; display: flex; z-index: 1; }
+        .edit-btn { width: 80px; background: #3b82f6; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 0; }
+        .delete-btn { width: 80px; background: #ef4444; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 0 1.5rem 1.5rem 0; }
+        
         #ptr { text-align: center; height: 0; overflow: hidden; transition: height 0.2s; background: #f8fafc; color: #94a3b8; font-size: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
     </style>
 </head>
@@ -62,6 +65,7 @@
         <div class="bg-white w-full max-w-md rounded-t-[2.5rem] p-8 animate-slide-up">
             <h2 id="modalTitle" class="text-2xl font-black mb-6 text-slate-800">Nuova Operazione</h2>
             <form id="transactionForm" class="space-y-4">
+                <input type="hidden" id="edit_id">
                 <input type="hidden" id="tipo">
                 <select id="categoria" class="w-full p-4 bg-slate-100 rounded-2xl font-semibold border-none" required></select>
                 <input type="number" id="importo" step="0.01" class="w-full p-4 bg-slate-100 rounded-2xl font-bold text-xl border-none text-slate-800" placeholder="0.00" required>
@@ -70,10 +74,10 @@
                     <option value="Satispay">Satispay 📱</option>
                     <option value="Contanti">Contanti 💵</option>
                 </select>
-                <input type="text" id="descrizione" class="w-full p-4 bg-slate-100 rounded-2xl font-semibold border-none text-slate-700" placeholder="Esempio: Spesa settimanale">
+                <input type="text" id="descrizione" class="w-full p-4 bg-slate-100 rounded-2xl font-semibold border-none text-slate-700" placeholder="Descrizione">
                 <input type="date" id="data" class="w-full p-4 bg-slate-100 rounded-2xl font-semibold border-none text-slate-700">
                 <div class="flex gap-4 pt-4">
-                    <button type="button" onclick="closeModal()" class="flex-1 py-4 text-gray-400 font-bold">Esci</button>
+                    <button type="button" onclick="closeModal()" class="flex-1 py-4 text-gray-400 font-bold">Annulla</button>
                     <button type="submit" class="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold shadow-lg">Salva</button>
                 </div>
             </form>
@@ -87,71 +91,31 @@
 
         let currentDate = new Date();
         let xDown = null, yDown = null, activeSwipeElement = null;
-        let startY = 0;
 
         const ctx = document.getElementById('myChart').getContext('2d');
         let myChart = new Chart(ctx, {
             type: 'doughnut',
-            data: { labels: [], datasets: [{ data: [], backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#f472b6'], borderWidth: 0 }] },
+            data: { labels: [], datasets: [{ data: [], backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#f472b6', '#06b6d4', '#fb923c'], borderWidth: 0 }] },
             options: { cutout: '80%', plugins: { legend: { display: false } } }
         });
 
-        // --- PULL TO REFRESH ---
+        // Swipe Logic aggiornata per due tasti
         window.addEventListener('touchstart', (e) => { 
-            startY = e.touches[0].pageY; 
-            xDown = e.touches[0].clientX;
-            yDown = e.touches[0].clientY;
+            xDown = e.touches[0].clientX; yDown = e.touches[0].clientY;
         }, {passive: true});
 
         window.addEventListener('touchmove', (e) => {
-            const touch = e.touches[0];
-            const diffY = touch.pageY - startY;
-
-            // Logica Refresh: se siamo in cima e trasciniamo giù
-            if (window.scrollY === 0 && diffY > 0) {
-                const ptr = document.getElementById('ptr');
-                ptr.style.height = Math.min(diffY, 60) + 'px';
-                if (diffY > 60) {
-                    location.reload(); // Forza ricarica completa
+            const container = e.target.closest('.swipe-container');
+            if (container) {
+                let xUp = e.touches[0].clientX;
+                let xDiff = xDown - xUp;
+                if (Math.abs(xDiff) > 15) {
+                    if (xDiff > 0) container.style.transform = 'translateX(-160px)';
+                    else container.style.transform = 'translateX(0)';
+                    activeSwipeElement = container;
                 }
             }
-
-            // Logica Swipe Transazioni
-            if (activeSwipeElement || Math.abs(xDown - touch.clientX) > 10) {
-                // Cerchiamo l'elemento swipe-container più vicino
-                const container = e.target.closest('.swipe-container');
-                if (container) handleSwipeLogic(e, container);
-            }
-        }, {passive: false});
-
-        window.addEventListener('touchend', () => {
-            document.getElementById('ptr').style.height = '0px';
-        });
-
-        function handleSwipeLogic(evt, element) {
-            let xUp = evt.touches[0].clientX;
-            let yUp = evt.touches[0].clientY;
-            let xDiff = xDown - xUp;
-            let yDiff = yDown - yUp;
-
-            if (Math.abs(xDiff) > Math.abs(yDiff)) {
-                if (evt.cancelable) evt.preventDefault();
-                if (xDiff > 15) { 
-                    if (activeSwipeElement && activeSwipeElement !== element) activeSwipeElement.style.transform = 'translateX(0)';
-                    element.style.transform = 'translateX(-85px)';
-                    activeSwipeElement = element;
-                } else if (xDiff < -15) { 
-                    element.style.transform = 'translateX(0)';
-                    activeSwipeElement = null;
-                }
-            }
-        }
-
-        // --- LOGICA CORE ---
-        function changeMonth(delta) {
-            currentDate.setMonth(currentDate.getMonth() + delta);
-            updateUI();
-        }
+        }, {passive: true});
 
         async function updateUI() {
             const monthNames = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
@@ -170,23 +134,22 @@
             const aggregato = {};
             let listHtml = '';
 
-            if (riporto !== 0) {
-                listHtml += `<div class="bg-blue-50 p-4 rounded-2xl flex justify-between items-center border border-blue-100 mb-2"><div class="flex items-center gap-3"><div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-lg">🏦</div><div><p class="font-bold text-sm text-blue-900 italic">Saldo mesi precedenti</p></div></div><p class="font-black ${riporto > 0 ? 'text-blue-600' : 'text-red-600'}">€ ${riporto.toFixed(2)}</p></div>`;
-            }
-
             currentData?.forEach(t => {
                 if (t.tipo === 'entrata') saldoMese += t.importo;
                 else { saldoMese -= t.importo; aggregato[t.categoria] = (aggregato[t.categoria] || 0) + t.importo; }
                 
                 listHtml += `
-                <div class="relative overflow-hidden rounded-2xl mb-3 shadow-sm">
-                    <div class="delete-btn" onclick="deleteTransaction(${t.id})">Elimina</div>
+                <div class="relative overflow-hidden rounded-2xl mb-3 shadow-sm bg-slate-200">
+                    <div class="actions-container">
+                        <div class="edit-btn" onclick="prepareEdit(${JSON.stringify(t).replace(/"/g, '&quot;')})">Edit</div>
+                        <div class="delete-btn" onclick="deleteTransaction(${t.id})">Del</div>
+                    </div>
                     <div class="swipe-container bg-white p-4 relative z-10 flex justify-between items-center border border-slate-100 rounded-2xl">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-lg border border-slate-50">${t.categoria.split(' ').pop()}</div>
+                            <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-lg">${t.categoria.split(' ').pop()}</div>
                             <div>
                                 <p class="font-bold text-sm text-slate-800">${t.descrizione || t.categoria}</p>
-                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">${t.data_transazione}</p>
+                                <p class="text-[10px] text-slate-400 font-bold uppercase">${t.data_transazione}</p>
                             </div>
                         </div>
                         <p class="font-black ${t.tipo === 'entrata' ? 'text-emerald-500' : 'text-slate-700'}">
@@ -198,7 +161,6 @@
 
             const saldoTotaleReale = riporto + saldoMese;
             document.getElementById('totalBalance').innerText = `€ ${saldoTotaleReale.toFixed(2)}`;
-            document.getElementById('totalBalance').className = saldoTotaleReale >= 0 ? "text-3xl font-black text-emerald-600 text-center" : "text-3xl font-black text-red-600 text-center";
             document.getElementById('transactionList').innerHTML = listHtml || '<p class="text-center text-slate-400 py-10 italic">Nessun movimento</p>';
             
             myChart.data.labels = Object.keys(aggregato);
@@ -206,37 +168,62 @@
             myChart.update();
         }
 
-        async function deleteTransaction(id) {
-            if(confirm("Eliminare questa transazione?")) {
-                await supabaseClient.from('transactions').delete().eq('id', id);
-                updateUI();
-            }
+        // Funzione per caricare i dati nella modale per la modifica
+        function prepareEdit(t) {
+            openModal(t.tipo);
+            document.getElementById('modalTitle').innerText = "Modifica Operazione";
+            document.getElementById('edit_id').value = t.id;
+            document.getElementById('categoria').value = t.categoria;
+            document.getElementById('importo').value = t.importo;
+            document.getElementById('metodo').value = t.metodo_pagamento;
+            document.getElementById('descrizione').value = t.descrizione;
+            document.getElementById('data').value = t.data_transazione;
+            if (activeSwipeElement) activeSwipeElement.style.transform = 'translateX(0)';
         }
 
         function openModal(tipo) {
+            document.getElementById('modalTitle').innerText = "Nuova Operazione";
+            document.getElementById('edit_id').value = "";
             document.getElementById('tipo').value = tipo;
-            const cats = tipo === 'entrata' ? ["Stipendio 💰", "Regalo 🎁", "Extra 📈"] : ["Spesa 🛒", "Svago 🍿", "Affitto 🏠", "Trasporti 🚗", "Abbonamenti 📺", "Salute 💊", "Risparmi 💰"];
+            const cats = tipo === 'entrata' ? 
+                ["Stipendio 💰", "Regalo 🎁", "Extra 📈"] : 
+                ["Spesa 🛒", "Cibo 🍕", "Svago 🍿", "Affitto 🏠", "Trasporti 🚗", "Telefono 📱", "Abbonamenti 📺", "Salute 💊", "Risparmi 💰"];
             document.getElementById('categoria').innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
             document.getElementById('modal').classList.remove('hidden');
         }
-        function closeModal() { document.getElementById('modal').classList.add('hidden'); }
-        document.getElementById('data').valueAsDate = new Date();
+
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); document.getElementById('transactionForm').reset(); }
 
         document.getElementById('transactionForm').onsubmit = async (e) => {
             e.preventDefault();
-            await supabaseClient.from('transactions').insert([{
+            const id = document.getElementById('edit_id').value;
+            const payload = {
                 tipo: document.getElementById('tipo').value,
                 categoria: document.getElementById('categoria').value,
                 importo: parseFloat(document.getElementById('importo').value),
                 metodo_pagamento: document.getElementById('metodo').value,
                 descrizione: document.getElementById('descrizione').value,
                 data_transazione: document.getElementById('data').value
-            }]);
+            };
+
+            if (id) {
+                await supabaseClient.from('transactions').update(payload).eq('id', id);
+            } else {
+                await supabaseClient.from('transactions').insert([payload]);
+            }
+            
             closeModal();
             updateUI();
-            document.getElementById('transactionForm').reset();
         };
 
+        async function deleteTransaction(id) {
+            if(confirm("Eliminare?")) {
+                await supabaseClient.from('transactions').delete().eq('id', id);
+                updateUI();
+            }
+        }
+
+        function changeMonth(delta) { currentDate.setMonth(currentDate.getMonth() + delta); updateUI(); }
         updateUI();
     </script>
 </body>
