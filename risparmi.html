@@ -22,7 +22,8 @@
     </div>
 
     <div id="savingsList" class="p-4 space-y-4">
-        </div>
+        <p class="text-center text-slate-400 py-20 italic animate-pulse">Inizializzazione...</p>
+    </div>
 
     <div class="fixed bottom-24 right-6 z-30">
         <button onclick="openModal()" class="bg-emerald-500 text-white w-14 h-14 rounded-full text-2xl shadow-xl font-bold active:scale-90 transition-transform">+</button>
@@ -41,7 +42,7 @@
             <h2 id="modalTitle" class="text-2xl font-black mb-6 text-slate-800">Nuovo Obiettivo</h2>
             <form id="savingForm" class="space-y-4">
                 <input type="hidden" id="edit_id">
-                <input type="text" id="nome" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" placeholder="Nome (es. Auto Nuova 🚗)" required>
+                <input type="text" id="nome" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" placeholder="Nome (es. Vacanze 🏝️)" required>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Attuale (€)</label>
@@ -68,17 +69,32 @@
         let xDown = null, activeSwipeElement = null;
 
         async function fetchSavings() {
-            const { data, error } = await supabaseClient.from('savings_plans').select('*').order('created_at', { ascending: true });
-            if (error) return;
+            const container = document.getElementById('savingsList');
+            
+            const { data, error } = await supabaseClient
+                .from('savings_plans')
+                .select('*')
+                .order('created_at', { ascending: true });
+
+            if (error) {
+                console.error("Errore:", error);
+                container.innerHTML = `<p class="text-center text-red-500 py-20 font-bold">Errore di connessione al database</p>`;
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                container.innerHTML = `<p class="text-center text-slate-400 py-20 italic">Nessun piano trovato.<br>Aggiungine uno con il tasto +</p>`;
+                return;
+            }
 
             let html = '';
             data.forEach(plan => {
                 const percent = Math.min((plan.attuale / plan.target) * 100, 100).toFixed(0);
                 html += `
-                <div class="relative overflow-hidden rounded-[2rem] shadow-sm bg-slate-200">
+                <div class="relative overflow-hidden rounded-[2rem] shadow-sm bg-slate-200 mb-4">
                     <div class="actions-container">
-                        <div class="edit-btn" onclick="prepareEdit(${JSON.stringify(plan).replace(/"/g, '&quot;')})">Edit</div>
-                        <div class="delete-btn" onclick="deletePlan(${plan.id})">Del</div>
+                        <div class="edit-btn" onclick="prepareEdit(${JSON.stringify(plan).replace(/"/g, '&quot;')})">Modifica</div>
+                        <div class="delete-btn" onclick="deletePlan(${plan.id})">Elimina</div>
                     </div>
                     <div class="swipe-container bg-white p-6 relative z-10 border border-slate-100 rounded-[2rem]">
                         <div class="flex justify-between items-center mb-4">
@@ -89,29 +105,29 @@
                             <div class="bg-emerald-500 h-full rounded-full transition-all duration-1000" style="width: ${percent}%"></div>
                         </div>
                         <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
-                            <span>€ ${plan.attuale.toFixed(2)}</span>
-                            <span>Target: € ${plan.target.toFixed(2)}</span>
+                            <span>€ ${parseFloat(plan.attuale).toFixed(2)}</span>
+                            <span>Target: € ${parseFloat(plan.target).toFixed(2)}</span>
                         </div>
                     </div>
                 </div>`;
             });
-            document.getElementById('savingsList').innerHTML = html || '<p class="text-center text-slate-400 py-20 italic">Nessun piano attivo</p>';
-            setupSwipe();
+            container.innerHTML = html;
+            setupSwipeEvents();
         }
 
-        function setupSwipe() {
+        function setupSwipeEvents() {
             document.querySelectorAll('.swipe-container').forEach(el => {
-                el.ontouchstart = e => xDown = e.touches[0].clientX;
-                el.ontouchmove = e => {
+                el.addEventListener('touchstart', e => { xDown = e.touches[0].clientX; }, {passive: true});
+                el.addEventListener('touchmove', e => {
                     if (!xDown) return;
                     let xDiff = xDown - e.touches[0].clientX;
-                    if (xDiff > 30) {
+                    if (xDiff > 40) {
                         el.style.transform = 'translateX(-160px)';
                         activeSwipeElement = el;
-                    } else if (xDiff < -30) {
+                    } else if (xDiff < -40) {
                         el.style.transform = 'translateX(0)';
                     }
-                };
+                }, {passive: true});
             });
         }
 
@@ -153,12 +169,13 @@
         };
 
         async function deletePlan(id) {
-            if(confirm("Eliminare definitivamente questo piano?")) {
+            if(confirm("Vuoi eliminare questo piano?")) {
                 await supabaseClient.from('savings_plans').delete().eq('id', id);
                 fetchSavings();
             }
         }
 
+        // Avvio
         fetchSavings();
     </script>
 </body>
