@@ -14,7 +14,6 @@
     </div>
 
     <div class="p-4 space-y-6">
-        
         <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
             <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 text-center">Mese Corrente vs Precedente</p>
             <div class="flex justify-around items-center">
@@ -28,7 +27,7 @@
                     <h3 id="currMonthTotal" class="text-2xl font-black text-slate-800">€ 0.00</h3>
                 </div>
             </div>
-            <div id="monthTrend" class="mt-4 text-center text-[10px] font-bold py-2 rounded-full px-4 inline-block mx-auto w-full">Calcolo in corso...</div>
+            <div id="monthTrend" class="mt-4 text-center text-[10px] font-bold py-2 rounded-full px-4 inline-block mx-auto w-full italic">Analizzando...</div>
         </div>
 
         <div class="bg-slate-800 p-6 rounded-[2.5rem] shadow-xl text-white">
@@ -48,17 +47,12 @@
 
         <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
             <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Trend Annuale Uscite</p>
-            <div class="flex items-baseline gap-2">
-                <h2 id="currYearTotal" class="text-3xl font-black text-slate-800">€ 0.00</h2>
-            </div>
-            <div class="mt-1">
-                <span id="yearDiff" class="text-[10px] font-bold uppercase">--</span>
-            </div>
+            <h2 id="currYearTotal" class="text-3xl font-black text-slate-800">€ 0.00</h2>
+            <div class="mt-1"><span id="yearDiff" class="text-[10px] font-bold uppercase">--</span></div>
             <div class="w-full bg-slate-100 h-1.5 rounded-full mt-4">
                 <div id="yearBar" class="bg-slate-800 h-full rounded-full transition-all duration-1000" style="width: 0%"></div>
             </div>
         </div>
-
     </div>
 
     <nav class="fixed bottom-0 w-full bg-white border-t flex justify-around p-4 text-[10px] font-bold text-gray-400 z-40">
@@ -86,30 +80,40 @@
             const startOfCurrYear = new Date(now.getFullYear(), 0, 1);
             const startOfPrevYear = new Date(now.getFullYear() - 1, 0, 1);
 
-            let stats = {
-                currMonth: 0, prevMonth: 0,
-                currSix: 0, prevSix: 0,
-                currYear: 0, prevYear: 0
-            };
+            let stats = { currMonth: 0, prevMonth: 0, currSix: 0, prevSix: 0, currYear: 0, prevYear: 0 };
 
             trans.forEach(t => {
                 const d = new Date(t.data_transazione);
-                const cat = t.categoria ? t.categoria.toLowerCase().trim() : "";
+                const rawVal = parseFloat(t.importo);
+                const cat = (t.categoria || "").toLowerCase().trim();
                 
-                // FILTRO: Escludiamo Stipendio ed Entrate per analizzare solo le USCITE
-                if (cat !== 'stipendio' && cat !== 'entrate' && cat !== 'ricarica') {
-                    const val = Math.abs(parseFloat(t.importo));
+                // --- LOGICA DI FILTRO USCITE ---
+                // Una transazione è una spesa se:
+                // 1. L'importo è negativo (es. -25.00)
+                // OPPURE
+                // 2. L'importo è positivo ma la categoria NON è tra quelle di entrata
+                
+                const isEntrata = cat.includes("stipendio") || 
+                                  cat.includes("entrate") || 
+                                  cat.includes("ricarica") || 
+                                  cat.includes("rimborso");
 
-                    if (!isNaN(val)) {
-                        if (d >= startOfCurrMonth) stats.currMonth += val;
-                        else if (d >= startOfPrevMonth && d < startOfCurrMonth) stats.prevMonth += val;
+                if (!isEntrata && rawVal !== 0) {
+                    // Se entriamo qui, consideriamo la transazione un'uscita
+                    // Prendiamo il valore assoluto per i calcoli
+                    const val = Math.abs(rawVal);
 
-                        if (d >= startOfCurrSix) stats.currSix += val;
-                        else if (d >= startOfPrevSix && d < startOfCurrSix) stats.prevSix += val;
+                    // Mese
+                    if (d >= startOfCurrMonth) stats.currMonth += val;
+                    else if (d >= startOfPrevMonth && d < startOfCurrMonth) stats.prevMonth += val;
 
-                        if (d >= startOfCurrYear) stats.currYear += val;
-                        else if (d >= startOfPrevYear && d < startOfCurrYear) stats.prevYear += val;
-                    }
+                    // 6 Mesi
+                    if (d >= startOfCurrSix) stats.currSix += val;
+                    else if (d >= startOfPrevSix && d < startOfCurrSix) stats.prevSix += val;
+
+                    // Anno
+                    if (d >= startOfCurrYear) stats.currYear += val;
+                    else if (d >= startOfPrevYear && d < startOfCurrYear) stats.prevYear += val;
                 }
             });
 
@@ -117,11 +121,11 @@
         }
 
         function getTrend(curr, prev) {
-            if (prev === 0) return { label: "Dati insufficienti", color: "text-slate-400", bg: "bg-slate-100" };
+            if (prev === 0) return { label: "Nessun dato precedente", color: "text-slate-400", bg: "bg-slate-100" };
             const diff = ((curr - prev) / prev) * 100;
-            const isWorse = diff > 0; // Più uscite = peggio
+            const isWorse = diff > 0;
             return {
-                label: `${isWorse ? '▲' : '▼'} ${Math.abs(diff).toFixed(1)}% rispetto al passato`,
+                label: `${isWorse ? '▲' : '▼'} ${Math.abs(diff).toFixed(1)}% vs periodo prec.`,
                 color: isWorse ? "text-rose-600" : "text-emerald-600",
                 bg: isWorse ? "bg-rose-50" : "bg-emerald-50"
             };
