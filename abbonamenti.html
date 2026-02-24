@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abbonamenti</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-50 pb-24 font-sans">
+
+    <div class="p-6 bg-white shadow-sm border-b sticky top-0 flex justify-between items-center z-10">
+        <h1 class="text-xl font-bold text-slate-800">📺 Abbonamenti</h1>
+        <a href="index.html" class="text-blue-500 font-bold text-sm">← Home</a>
+    </div>
+
+    <div class="m-4 p-6 bg-white rounded-3xl shadow-sm border border-indigo-100">
+        <form id="subForm" class="space-y-4">
+            <input type="text" id="nomeSub" placeholder="Nome (es: Netflix)" class="w-full p-4 bg-slate-100 rounded-2xl border-none font-semibold focus:ring-2 focus:ring-indigo-500" required>
+            <div class="flex gap-2">
+                <input type="number" id="costoSub" placeholder="Costo €" step="0.01" class="w-1/2 p-4 bg-slate-100 rounded-2xl border-none font-semibold focus:ring-2 focus:ring-indigo-500" required>
+                <input type="number" id="giornoSub" placeholder="Giorno rinnovo" min="1" max="28" class="w-1/2 p-4 bg-slate-100 rounded-2xl border-none font-semibold focus:ring-2 focus:ring-indigo-500" required>
+            </div>
+            <button type="submit" class="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg shadow-indigo-100 active:scale-95 transition-transform">Aggiungi</button>
+        </form>
+    </div>
+
+    <div class="m-4">
+        <h2 class="text-xs font-black text-gray-400 uppercase mb-3 tracking-widest">Servizi Attivi</h2>
+        <div id="subList" class="space-y-3"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://vdbgzqzquuvvcqgntsgh.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkYmd6cXpxdXV2dmNxZ250c2doIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MjY2MDEsImV4cCI6MjA4NzUwMjYwMX0.pTjNAQ6dYb0zNbL7DW2yf9ud50tsn1GrfIsX1XA0oXE';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        async function caricaAbbonamenti() {
+            const { data, error } = await supabaseClient.from('subscriptions').select('*');
+            if (error) return;
+
+            let html = '';
+            data.forEach(s => {
+                html += `
+                <div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex justify-between items-center">
+                    <div>
+                        <p class="font-black text-slate-800 text-lg">${s.nome}</p>
+                        <p class="text-[10px] text-gray-400 font-bold uppercase text-indigo-500">Rinnovo il ${s.data_prelievo} del mese</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-slate-900 font-black text-xl">€ ${s.costo}</p>
+                        <button onclick="eliminaSub(${s.id})" class="text-[10px] text-red-400 font-bold uppercase mt-1">Rimuovi</button>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('subList').innerHTML = html || '<p class="text-center text-gray-400 py-10">Nessun abbonamento attivo</p>';
+        }
+
+        document.getElementById('subForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const nuovo = {
+                nome: document.getElementById('nomeSub').value,
+                costo: parseFloat(document.getElementById('costoSub').value),
+                data_prelievo: parseInt(document.getElementById('giornoSub').value)
+            };
+            await supabaseClient.from('subscriptions').insert([nuovo]);
+            document.getElementById('subForm').reset();
+            caricaAbbonamenti();
+        };
+
+        async function eliminaSub(id) {
+            if(confirm("Eliminare abbonamento?")) {
+                await supabaseClient.from('subscriptions').delete().eq('id', id);
+                caricaAbbonamenti();
+            }
+        }
+        caricaAbbonamenti();
+    </script>
+</body>
+</html>

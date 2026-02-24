@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Satispay - Buoni Pasto</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-50 pb-24 font-sans">
+
+    <div class="p-6 bg-white shadow-sm border-b sticky top-0 flex justify-between items-center z-10">
+        <h1 class="text-xl font-bold text-slate-800">📱 Satispay</h1>
+        <a href="index.html" class="text-blue-500 font-bold text-sm">← Home</a>
+    </div>
+
+    <div class="m-4 p-6 bg-white rounded-3xl shadow-sm border border-blue-100">
+        <label class="block text-xs font-black text-gray-400 uppercase mb-3 tracking-widest">Carica Buoni (€)</label>
+        <div class="flex gap-2">
+            <input type="number" id="budgetBuoni" class="w-full p-4 bg-slate-100 rounded-2xl border-none font-bold text-blue-600 text-lg" placeholder="Es. 120">
+            <button onclick="salvaBudget()" class="bg-blue-600 text-white px-6 rounded-2xl font-bold shadow-lg shadow-blue-100">OK</button>
+        </div>
+        <div class="mt-4 flex justify-between items-center bg-blue-50 p-3 rounded-xl">
+            <span class="text-xs font-bold text-blue-800 uppercase">Residuo stimato:</span>
+            <span id="residuoBuoni" class="font-black text-blue-600">€ 0.00</span>
+        </div>
+    </div>
+
+    <div class="mx-4 grid grid-cols-2 gap-4">
+        <div class="bg-emerald-500 p-5 rounded-3xl shadow-lg text-white text-center">
+            <p class="text-[10px] font-black uppercase opacity-80">Buoni Usati</p>
+            <p id="totaleBuoniUsati" class="text-xl font-black mt-1">€ 0.00</p>
+        </div>
+        <div class="bg-slate-800 p-5 rounded-3xl shadow-lg text-white text-center">
+            <p class="text-[10px] font-black uppercase opacity-80">Tasca Mia</p>
+            <p id="totaleTasca" class="text-xl font-black mt-1">€ 0.00</p>
+        </div>
+    </div>
+
+    <div class="m-4 space-y-3" id="satispayList"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://vdbgzqzquuvvcqgntsgh.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkYmd6cXpxdXV2dmNxZ250c2doIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MjY2MDEsImV4cCI6MjA4NzUwMjYwMX0.pTjNAQ6dYb0zNbL7DW2yf9ud50tsn1GrfIsX1XA0oXE';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        document.getElementById('budgetBuoni').value = localStorage.getItem('budgetBuoni') || '';
+
+        function salvaBudget() {
+            localStorage.setItem('budgetBuoni', document.getElementById('budgetBuoni').value);
+            calcolaDatiSatispay();
+            alert("Budget buoni aggiornato!");
+        }
+
+        async function calcolaDatiSatispay() {
+            const { data, error } = await supabaseClient.from('transactions').select('*').eq('metodo_pagamento', 'Satispay').order('data_transazione', { ascending: false });
+            if (error) return;
+
+            let totBuoni = 0, totTasca = 0, html = '';
+            data.forEach(t => {
+                const nBuoni = Math.floor(t.importo / 6);
+                const valBuoni = nBuoni * 6;
+                const tasca = t.importo - valBuoni;
+                totBuoni += valBuoni; totTasca += tasca;
+
+                html += `<div class="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex justify-between items-center">
+                    <div><p class="font-black text-slate-800">${t.descrizione || t.categoria}</p><p class="text-[10px] text-gray-400 font-bold">${t.data_transazione}</p></div>
+                    <div class="text-right"><p class="font-black text-slate-900">€ ${t.importo.toFixed(2)}</p><p class="text-[10px] text-emerald-600 font-black uppercase">Buoni: €${valBuoni.toFixed(2)}</p></div>
+                </div>`;
+            });
+
+            document.getElementById('totaleBuoniUsati').innerText = `€ ${totBuoni.toFixed(2)}`;
+            document.getElementById('totaleTasca').innerText = `€ ${totTasca.toFixed(2)}`;
+            document.getElementById('satispayList').innerHTML = html || '<p class="text-center text-gray-400 py-10 font-medium">Nessuna spesa Satispay</p>';
+            const budget = parseFloat(localStorage.getItem('budgetBuoni')) || 0;
+            document.getElementById('residuoBuoni').innerText = `€ ${(budget - totBuoni).toFixed(2)}`;
+        }
+        calcolaDatiSatispay();
+    </script>
+</body>
+</html>
