@@ -3,25 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Piani di Accumulo - MoneyTracker</title>
+    <title>Piani di Accumulo</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .animate-slide-up { animation: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .swipe-container { transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1); touch-action: pan-y; }
+        .actions-container { position: absolute; right: 0; top: 0; bottom: 0; width: 160px; display: flex; z-index: 1; }
+        .edit-btn { width: 80px; background: #3b82f6; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .delete-btn { width: 80px; background: #ef4444; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 0 1.5rem 1.5rem 0; }
+    </style>
 </head>
-<body class="bg-slate-50 pb-32 font-sans text-slate-900">
+<body class="bg-slate-50 pb-32 font-sans text-slate-900 overflow-x-hidden">
 
     <div class="p-6 bg-white shadow-sm border-b sticky top-0 z-40">
-        <h1 class="text-xl font-black uppercase tracking-widest text-slate-800 text-center">I Miei Risparmi</h1>
+        <h1 class="text-lg font-black uppercase tracking-widest text-slate-800 text-center">Piani di Accumulo</h1>
     </div>
 
-    <div class="m-4 p-6 bg-slate-800 rounded-[2.5rem] text-white shadow-xl">
-        <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mb-1">Totale Accumulato</p>
-        <h2 id="grandTotalSavings" class="text-4xl font-black">€ 0.00</h2>
-    </div>
-
-    <div class="mx-4 space-y-4" id="pacList">
+    <div id="savingsList" class="p-4 space-y-4">
         </div>
 
-    <button onclick="document.getElementById('modalPAC').classList.remove('hidden')" class="fixed bottom-24 right-6 bg-slate-800 text-white w-14 h-14 rounded-full text-2xl shadow-xl font-bold z-30">+</button>
+    <div class="fixed bottom-24 right-6 z-30">
+        <button onclick="openModal()" class="bg-emerald-500 text-white w-14 h-14 rounded-full text-2xl shadow-xl font-bold active:scale-90 transition-transform">+</button>
+    </div>
 
     <nav class="fixed bottom-0 w-full bg-white border-t flex justify-around p-4 text-[10px] font-bold text-gray-400 z-40">
         <a href="index.html" class="flex flex-col items-center gap-1">🏠 <span>Home</span></a>
@@ -31,16 +36,25 @@
         <a href="analisi.html" class="flex flex-col items-center gap-1">📈 <span>Analisi</span></a>
     </nav>
 
-    <div id="modalPAC" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end justify-center z-50">
+    <div id="modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end justify-center z-50">
         <div class="bg-white w-full max-w-md rounded-t-[2.5rem] p-8 animate-slide-up">
-            <h2 class="text-2xl font-black mb-6">Nuovo Piano</h2>
-            <form id="pacForm" class="space-y-4">
-                <input type="text" id="nomePAC" class="w-full p-4 bg-slate-100 rounded-2xl font-semibold border-none" placeholder="Nome (es. Fondo Vacanze)" required>
-                <input type="number" id="importoPAC" step="0.01" class="w-full p-4 bg-slate-100 rounded-2xl font-bold text-xl border-none" placeholder="Importo mensile" required>
-                <input type="number" id="giornoPAC" min="1" max="28" class="w-full p-4 bg-slate-100 rounded-2xl font-semibold border-none" placeholder="Giorno prelievo (1-28)" required>
+            <h2 id="modalTitle" class="text-2xl font-black mb-6 text-slate-800">Nuovo Obiettivo</h2>
+            <form id="savingForm" class="space-y-4">
+                <input type="hidden" id="edit_id">
+                <input type="text" id="nome" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" placeholder="Nome (es. Auto Nuova 🚗)" required>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Attuale (€)</label>
+                        <input type="number" id="attuale" step="0.01" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" placeholder="0.00" required>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Target (€)</label>
+                        <input type="number" id="target" step="0.01" class="w-full p-4 bg-slate-100 rounded-2xl font-bold border-none" placeholder="1000.00" required>
+                    </div>
+                </div>
                 <div class="flex gap-4 pt-4">
-                    <button type="button" onclick="document.getElementById('modalPAC').classList.add('hidden')" class="flex-1 py-4 text-gray-400 font-bold">Annulla</button>
-                    <button type="submit" class="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold">Attiva</button>
+                    <button type="button" onclick="closeModal()" class="flex-1 py-4 text-gray-400 font-bold">Annulla</button>
+                    <button type="submit" class="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold shadow-lg">Salva</button>
                 </div>
             </form>
         </div>
@@ -51,54 +65,101 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkYmd6cXpxdXV2dmNxZ250c2doIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MjY2MDEsImV4cCI6MjA4NzUwMjYwMX0.pTjNAQ6dYb0zNbL7DW2yf9ud50tsn1GrfIsX1XA0oXE';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        async function loadPACs() {
-            // 1. Prendi i piani
-            const { data: plans } = await supabaseClient.from('savings').select('*');
-            // 2. Prendi tutte le transazioni di tipo risparmio (AUTO-PAC)
-            const { data: trans } = await supabaseClient.from('transactions').select('*').ilike('descrizione', 'AUTO-PAC%');
+        let xDown = null, activeSwipeElement = null;
 
-            let listHtml = '';
-            let totaleGenerale = 0;
+        async function fetchSavings() {
+            const { data, error } = await supabaseClient.from('savings_plans').select('*').order('created_at', { ascending: true });
+            if (error) return;
 
-            plans?.forEach(plan => {
-                // Calcola quanto è stato accumulato per QUESTO specifico piano
-                const accumulato = trans
-                    ?.filter(t => t.descrizione === `AUTO-PAC: ${plan.nome_piano}`)
-                    .reduce((sum, t) => sum + t.importo, 0) || 0;
-
-                totaleGenerale += accumulato;
-
-                listHtml += `
-                <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex justify-between items-center">
-                    <div>
-                        <h3 class="font-black text-slate-800 text-lg">${plan.nome_piano}</h3>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                            Contributo: €${plan.importo_mensile.toFixed(2)}/mese (Giorno ${plan.giorno_prelievo})
-                        </p>
+            let html = '';
+            data.forEach(plan => {
+                const percent = Math.min((plan.attuale / plan.target) * 100, 100).toFixed(0);
+                html += `
+                <div class="relative overflow-hidden rounded-[2rem] shadow-sm bg-slate-200">
+                    <div class="actions-container">
+                        <div class="edit-btn" onclick="prepareEdit(${JSON.stringify(plan).replace(/"/g, '&quot;')})">Edit</div>
+                        <div class="delete-btn" onclick="deletePlan(${plan.id})">Del</div>
                     </div>
-                    <div class="text-right">
-                        <p class="text-[10px] text-emerald-500 font-black uppercase tracking-widest mb-1">Accumulato</p>
-                        <p class="text-xl font-black text-slate-800">€ ${accumulato.toFixed(2)}</p>
+                    <div class="swipe-container bg-white p-6 relative z-10 border border-slate-100 rounded-[2rem]">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-black text-slate-800 tracking-tight">${plan.nome}</h3>
+                            <span class="text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">${percent}%</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden mb-2">
+                            <div class="bg-emerald-500 h-full rounded-full transition-all duration-1000" style="width: ${percent}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase">
+                            <span>€ ${plan.attuale.toFixed(2)}</span>
+                            <span>Target: € ${plan.target.toFixed(2)}</span>
+                        </div>
                     </div>
                 </div>`;
             });
-
-            document.getElementById('pacList').innerHTML = listHtml || '<p class="text-center text-slate-400 py-10">Nessun piano attivo</p>';
-            document.getElementById('grandTotalSavings').innerText = `€ ${totaleGenerale.toFixed(2)}`;
+            document.getElementById('savingsList').innerHTML = html || '<p class="text-center text-slate-400 py-20 italic">Nessun piano attivo</p>';
+            setupSwipe();
         }
 
-        document.getElementById('pacForm').onsubmit = async (e) => {
+        function setupSwipe() {
+            document.querySelectorAll('.swipe-container').forEach(el => {
+                el.ontouchstart = e => xDown = e.touches[0].clientX;
+                el.ontouchmove = e => {
+                    if (!xDown) return;
+                    let xDiff = xDown - e.touches[0].clientX;
+                    if (xDiff > 30) {
+                        el.style.transform = 'translateX(-160px)';
+                        activeSwipeElement = el;
+                    } else if (xDiff < -30) {
+                        el.style.transform = 'translateX(0)';
+                    }
+                };
+            });
+        }
+
+        function openModal() {
+            document.getElementById('modalTitle').innerText = "Nuovo Obiettivo";
+            document.getElementById('edit_id').value = "";
+            document.getElementById('savingForm').reset();
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function prepareEdit(plan) {
+            document.getElementById('modalTitle').innerText = "Modifica Obiettivo";
+            document.getElementById('edit_id').value = plan.id;
+            document.getElementById('nome').value = plan.nome;
+            document.getElementById('attuale').value = plan.attuale;
+            document.getElementById('target').value = plan.target;
+            document.getElementById('modal').classList.remove('hidden');
+            if (activeSwipeElement) activeSwipeElement.style.transform = 'translateX(0)';
+        }
+
+        function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+        document.getElementById('savingForm').onsubmit = async (e) => {
             e.preventDefault();
-            await supabaseClient.from('savings').insert([{
-                nome_piano: document.getElementById('nomePAC').value,
-                importo_mensile: parseFloat(document.getElementById('importoPAC').value),
-                giorno_prelievo: parseInt(document.getElementById('giornoPAC').value)
-            }]);
-            document.getElementById('modalPAC').classList.add('hidden');
-            loadPACs();
+            const id = document.getElementById('edit_id').value;
+            const payload = {
+                nome: document.getElementById('nome').value,
+                attuale: parseFloat(document.getElementById('attuale').value),
+                target: parseFloat(document.getElementById('target').value)
+            };
+
+            if (id) {
+                await supabaseClient.from('savings_plans').update(payload).eq('id', id);
+            } else {
+                await supabaseClient.from('savings_plans').insert([payload]);
+            }
+            closeModal();
+            fetchSavings();
         };
 
-        loadPACs();
+        async function deletePlan(id) {
+            if(confirm("Eliminare definitivamente questo piano?")) {
+                await supabaseClient.from('savings_plans').delete().eq('id', id);
+                fetchSavings();
+            }
+        }
+
+        fetchSavings();
     </script>
 </body>
 </html>
