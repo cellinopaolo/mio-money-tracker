@@ -46,13 +46,13 @@
             <p id="sixMonthTrend" class="text-center text-[10px] mt-4 font-bold opacity-80 uppercase tracking-tighter">--</p>
         </div>
 
-        <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 relative overflow-hidden">
-            <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Spesa Totale quest'anno</p>
+        <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
+            <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Trend Annuale Uscite</p>
             <div class="flex items-baseline gap-2">
                 <h2 id="currYearTotal" class="text-3xl font-black text-slate-800">€ 0.00</h2>
             </div>
-            <div class="mt-1 flex items-center gap-1">
-                <span id="yearDiff" class="text-[10px] font-bold text-slate-400 uppercase">Caricamento...</span>
+            <div class="mt-1">
+                <span id="yearDiff" class="text-[10px] font-bold uppercase">--</span>
             </div>
             <div class="w-full bg-slate-100 h-1.5 rounded-full mt-4">
                 <div id="yearBar" class="bg-slate-800 h-full rounded-full transition-all duration-1000" style="width: 0%"></div>
@@ -79,13 +79,10 @@
             if (!trans) return;
 
             const now = new Date();
-            // Inizio periodi
             const startOfCurrMonth = new Date(now.getFullYear(), now.getMonth(), 1);
             const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            
             const startOfCurrSix = new Date(now.getFullYear(), now.getMonth() - 5, 1);
             const startOfPrevSix = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-
             const startOfCurrYear = new Date(now.getFullYear(), 0, 1);
             const startOfPrevYear = new Date(now.getFullYear() - 1, 0, 1);
 
@@ -97,21 +94,22 @@
 
             trans.forEach(t => {
                 const d = new Date(t.data_transazione);
-                // SOLO USCITE (Valore negativo nel DB)
-                if (t.importo > 0) {
+                const cat = t.categoria ? t.categoria.toLowerCase().trim() : "";
+                
+                // FILTRO: Escludiamo Stipendio ed Entrate per analizzare solo le USCITE
+                if (cat !== 'stipendio' && cat !== 'entrate' && cat !== 'ricarica') {
                     const val = Math.abs(parseFloat(t.importo));
 
-                    // Mese
-                    if (d >= startOfCurrMonth) stats.currMonth += val;
-                    else if (d >= startOfPrevMonth && d < startOfCurrMonth) stats.prevMonth += val;
+                    if (!isNaN(val)) {
+                        if (d >= startOfCurrMonth) stats.currMonth += val;
+                        else if (d >= startOfPrevMonth && d < startOfCurrMonth) stats.prevMonth += val;
 
-                    // 6 Mesi
-                    if (d >= startOfCurrSix) stats.currSix += val;
-                    else if (d >= startOfPrevSix && d < startOfCurrSix) stats.prevSix += val;
+                        if (d >= startOfCurrSix) stats.currSix += val;
+                        else if (d >= startOfPrevSix && d < startOfCurrSix) stats.prevSix += val;
 
-                    // Anno
-                    if (d >= startOfCurrYear) stats.currYear += val;
-                    else if (d >= startOfPrevYear && d < startOfCurrYear) stats.prevYear += val;
+                        if (d >= startOfCurrYear) stats.currYear += val;
+                        else if (d >= startOfPrevYear && d < startOfCurrYear) stats.prevYear += val;
+                    }
                 }
             });
 
@@ -119,18 +117,17 @@
         }
 
         function getTrend(curr, prev) {
-            if (prev === 0) return { label: "Nessun dato precedente", color: "text-slate-400", bg: "bg-slate-100" };
+            if (prev === 0) return { label: "Dati insufficienti", color: "text-slate-400", bg: "bg-slate-100" };
             const diff = ((curr - prev) / prev) * 100;
-            const isWorse = diff > 0; // Se spendi di più, è peggio (Rosso)
+            const isWorse = diff > 0; // Più uscite = peggio
             return {
-                label: `${isWorse ? '▲' : '▼'} ${Math.abs(diff).toFixed(1)}% rispetto al periodo precedente`,
+                label: `${isWorse ? '▲' : '▼'} ${Math.abs(diff).toFixed(1)}% rispetto al passato`,
                 color: isWorse ? "text-rose-600" : "text-emerald-600",
                 bg: isWorse ? "bg-rose-50" : "bg-emerald-50"
             };
         }
 
         function updateUI(s) {
-            // Mese
             document.getElementById('currMonthTotal').innerText = `€ ${s.currMonth.toFixed(2)}`;
             document.getElementById('prevMonthTotal').innerText = `€ ${s.prevMonth.toFixed(2)}`;
             const mTrend = getTrend(s.currMonth, s.prevMonth);
@@ -138,18 +135,16 @@
             mt.innerText = mTrend.label;
             mt.className = `mt-4 text-center text-[10px] font-bold py-2 rounded-full px-4 inline-block mx-auto w-full ${mTrend.bg} ${mTrend.color}`;
 
-            // Semestre
             document.getElementById('currSixTotal').innerText = `€ ${s.currSix.toFixed(2)}`;
             document.getElementById('prevSixTotal').innerText = `€ ${s.prevSix.toFixed(2)}`;
             const sTrend = getTrend(s.currSix, s.prevSix);
             document.getElementById('sixMonthTrend').innerText = sTrend.label;
             document.getElementById('sixMonthTrend').className = `text-center text-[10px] mt-4 font-bold uppercase tracking-tighter ${sTrend.color.replace('600', '400')}`;
 
-            // Anno
             document.getElementById('currYearTotal').innerText = `€ ${s.currYear.toFixed(2)}`;
             const yDiff = s.currYear - s.prevYear;
             const yTrend = getTrend(s.currYear, s.prevYear);
-            document.getElementById('yearDiff').innerText = `${yDiff >= 0 ? '+' : ''}€ ${yDiff.toFixed(2)} rispetto all'anno scorso`;
+            document.getElementById('yearDiff').innerText = `${yDiff >= 0 ? '+' : '-'}€ ${Math.abs(yDiff).toFixed(2)} rispetto all'anno scorso`;
             document.getElementById('yearDiff').className = `text-[10px] font-bold uppercase ${yTrend.color}`;
             
             const yPerc = s.prevYear > 0 ? Math.min((s.currYear / s.prevYear) * 100, 100) : 100;
