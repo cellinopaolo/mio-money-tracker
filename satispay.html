@@ -11,13 +11,13 @@
 
     <div class="p-6 bg-white shadow-sm border-b sticky top-0 z-40 flex justify-between items-center">
         <h1 class="text-lg font-black uppercase tracking-widest text-slate-800">Satispay</h1>
-        <button onclick="document.getElementById('modalVoucher').classList.remove('hidden')" class="bg-slate-100 p-2 rounded-xl text-xs font-bold">+ Carica Buoni</button>
+        <button onclick="document.getElementById('modalVoucher').classList.remove('hidden')" class="bg-slate-100 p-2 rounded-xl text-xs font-bold text-slate-600">+ Carica Buoni</button>
     </div>
 
     <div class="m-4 p-6 bg-slate-800 rounded-[2.5rem] text-white shadow-xl">
         <div class="flex justify-between items-end mb-1">
-            <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Residuo Buoni (da 6€)</p>
-            <p id="buoniConteggio" class="text-[10px] font-bold opacity-60 italic">Caricamento...</p>
+            <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Valore Buoni Disponibili</p>
+            <p id="buoniDettaglio" class="text-[10px] font-bold opacity-60 italic"></p>
         </div>
         <h2 id="buoniResiduo" class="text-4xl font-black">€ 0.00</h2>
         <div class="w-full bg-slate-700 h-2 rounded-full mt-4 overflow-hidden">
@@ -29,21 +29,24 @@
         <div class="relative z-10">
             <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-80 mb-1">Debito da riscuotere</p>
             <h2 id="satispayDebt" class="text-3xl font-black">€ 0.00</h2>
-            <button onclick="resetSatispay()" class="mt-4 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all">Segna rimborsi ricevuti ✅</button>
+            <button onclick="resetSatispay()" class="mt-4 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all tracking-wider">Segna rimborsi ricevuti ✅</button>
         </div>
         <div class="absolute right-[-10px] top-[-10px] text-white/10 text-8xl font-black">📱</div>
     </div>
 
-    <div class="mx-4 mt-8 space-y-3" id="satispayList"></div>
+    <div class="mx-4 mt-8 space-y-3">
+        <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest text-center mb-4">Dettaglio Anticipi</h3>
+        <div id="satispayList" class="space-y-3"></div>
+    </div>
 
     <div id="modalVoucher" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-        <div class="bg-white w-full max-w-sm rounded-[2rem] p-8">
-            <h2 class="text-xl font-black mb-4">Aggiungi Buoni</h2>
-            <p class="text-xs text-gray-500 mb-6">Quanti nuovi buoni da 6€ hai ricevuto?</p>
-            <input type="number" id="newVouchers" class="w-full p-4 bg-slate-100 rounded-2xl font-bold text-center text-2xl mb-6" placeholder="0">
-            <div class="flex gap-4">
-                <button onclick="document.getElementById('modalVoucher').classList.add('hidden')" class="flex-1 py-3 text-gray-400 font-bold">Annulla</button>
-                <button onclick="addVouchers()" class="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold">Carica</button>
+        <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl">
+            <h2 class="text-xl font-black mb-2 text-slate-800">Nuova Ricarica</h2>
+            <p class="text-xs text-gray-400 mb-6">Inserisci il numero di buoni da 6€ ricevuti</p>
+            <input type="number" id="newVouchers" class="w-full p-4 bg-slate-100 rounded-2xl font-bold text-center text-3xl mb-6 text-slate-700" placeholder="0">
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('modalVoucher').classList.add('hidden')" class="flex-1 py-4 text-gray-400 font-bold text-sm">Annulla</button>
+                <button onclick="addVouchers()" class="flex-1 py-4 bg-slate-800 text-white rounded-2xl font-bold text-sm">Carica</button>
             </div>
         </div>
     </div>
@@ -63,12 +66,12 @@
         const VALORE_SINGOLO_BUONO = 6;
 
         async function loadSatispay() {
-            // 1. Recupera totale buoni caricati
+            // 1. Totale Euro Caricati
             const { data: wallet } = await supabaseClient.from('voucher_wallet').select('quantita_caricata');
             const totaleBuoniCaricati = wallet?.reduce((sum, w) => sum + w.quantita_caricata, 0) || 0;
-            const budgetInizialeEuro = totaleBuoniCaricati * VALORE_SINGOLO_BUONO;
+            const budgetTotaleEuro = totaleBuoniCaricati * VALORE_SINGOLO_BUONO;
 
-            // 2. Recupera transazioni
+            // 2. Transazioni Satispay
             const { data: trans } = await supabaseClient.from('transactions').select('*').eq('metodo_pagamento', 'Satispay');
 
             let buoniConsumatiEuro = 0;
@@ -78,6 +81,8 @@
             trans?.forEach(t => {
                 const numBuoniUsati = Math.floor(t.importo / VALORE_SINGOLO_BUONO);
                 const valoreBuoni = numBuoniUsati * VALORE_SINGOLO_BUONO;
+                
+                // Questi € vengono sottratti dal wallet
                 buoniConsumatiEuro += valoreBuoni;
 
                 if (!t.rimborsato) {
@@ -85,20 +90,27 @@
                     totaleDebitoAperto += anticipo;
                     listHtml += `
                     <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center mb-3">
-                        <div><p class="font-bold text-slate-800 text-sm">${t.descrizione || t.categoria}</p>
-                        <p class="text-[9px] text-slate-400 font-bold uppercase">Usi ${numBuoniUsati} buoni</p></div>
-                        <p class="font-black text-rose-500">€ ${anticipo.toFixed(2)}</p>
+                        <div>
+                            <p class="font-bold text-slate-800 text-sm">${t.descrizione || t.categoria}</p>
+                            <p class="text-[9px] text-slate-400 font-bold uppercase">Utilizzati €${valoreBuoni.toFixed(2)} in buoni</p>
+                        </div>
+                        <p class="font-black text-rose-500 text-lg">€ ${anticipo.toFixed(2)}</p>
                     </div>`;
                 }
             });
 
-            // Update UI
-            const residuoEuro = budgetInizialeEuro - buoniConsumatiEuro;
+            // Update UI Wallet
+            const residuoEuro = budgetTotaleEuro - buoniConsumatiEuro;
             document.getElementById('buoniResiduo').innerText = `€ ${residuoEuro.toFixed(2)}`;
-            document.getElementById('buoniConteggio').innerText = `${Math.floor(residuoEuro/6)} buoni rimasti`;
-            document.getElementById('buoniBar').style.width = budgetInizialeEuro > 0 ? (residuoEuro / budgetInizialeEuro * 100) + '%' : '0%';
+            document.getElementById('buoniDettaglio').innerText = `Su un totale di €${budgetTotaleEuro.toFixed(2)}`;
+            
+            // Barra progresso basata sul valore in €
+            const perc = budgetTotaleEuro > 0 ? (residuoEuro / budgetTotaleEuro * 100) : 0;
+            document.getElementById('buoniBar').style.width = perc + '%';
+
+            // Update UI Debito
             document.getElementById('satispayDebt').innerText = `€ ${totaleDebitoAperto.toFixed(2)}`;
-            document.getElementById('satispayList').innerHTML = listHtml || '<p class="text-center text-slate-300 py-10 text-xs italic">Tutto saldato!</p>';
+            document.getElementById('satispayList').innerHTML = listHtml || '<p class="text-center text-slate-300 py-10 text-xs italic">Nessun debito da riscuotere</p>';
         }
 
         async function addVouchers() {
@@ -112,7 +124,7 @@
         }
 
         async function resetSatispay() {
-            if(confirm("Segnare come rimborsati?")) {
+            if(confirm("Vuoi azzerare il debito residuo? I buoni rimarranno scalati.")) {
                 await supabaseClient.from('transactions').update({ rimborsato: true }).eq('metodo_pagamento', 'Satispay').eq('rimborsato', false);
                 loadSatispay();
             }
