@@ -98,7 +98,7 @@
             trans.forEach(t => {
                 const d = new Date(t.data_transazione);
                 // SOLO USCITE (Valore negativo nel DB)
-                if (t.importo < 0) {
+                if (t.importo > 0) {
                     const val = Math.abs(parseFloat(t.importo));
 
                     // Mese
