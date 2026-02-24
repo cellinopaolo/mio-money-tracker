@@ -3,21 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Satispay & Buoni</title>
+    <title>Satispay & Wallet Buoni</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-slate-50 pb-32 font-sans text-slate-900">
 
-    <div class="p-6 bg-white shadow-sm border-b sticky top-0 z-40">
-        <h1 class="text-xl font-black uppercase tracking-widest text-slate-800 text-center">Satispay</h1>
+    <div class="p-6 bg-white shadow-sm border-b sticky top-0 z-40 flex justify-between items-center">
+        <h1 class="text-lg font-black uppercase tracking-widest text-slate-800">Satispay</h1>
+        <button onclick="document.getElementById('modalVoucher').classList.remove('hidden')" class="bg-slate-100 p-2 rounded-xl text-xs font-bold">+ Carica Buoni</button>
     </div>
 
     <div class="m-4 p-6 bg-slate-800 rounded-[2.5rem] text-white shadow-xl">
-        <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60 mb-1">Residuo Buoni (Tot. 200€)</p>
-        <h2 id="buoniResiduo" class="text-4xl font-black">€ 200.00</h2>
+        <div class="flex justify-between items-end mb-1">
+            <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-60">Residuo Buoni (da 6€)</p>
+            <p id="buoniConteggio" class="text-[10px] font-bold opacity-60 italic">Caricamento...</p>
+        </div>
+        <h2 id="buoniResiduo" class="text-4xl font-black">€ 0.00</h2>
         <div class="w-full bg-slate-700 h-2 rounded-full mt-4 overflow-hidden">
-            <div id="buoniBar" class="bg-emerald-400 h-full transition-all duration-500" style="width: 100%"></div>
+            <div id="buoniBar" class="bg-emerald-400 h-full transition-all duration-500" style="width: 0%"></div>
         </div>
     </div>
 
@@ -25,16 +29,23 @@
         <div class="relative z-10">
             <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-80 mb-1">Debito da riscuotere</p>
             <h2 id="satispayDebt" class="text-3xl font-black">€ 0.00</h2>
-            <button onclick="resetSatispay()" class="mt-4 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all">
-                Segna rimborsi come ricevuti ✅
-            </button>
+            <button onclick="resetSatispay()" class="mt-4 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-xl text-[10px] font-bold uppercase transition-all">Segna rimborsi ricevuti ✅</button>
         </div>
         <div class="absolute right-[-10px] top-[-10px] text-white/10 text-8xl font-black">📱</div>
     </div>
 
-    <div class="mx-4 mt-8 space-y-3">
-        <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest text-center mb-4">Transazioni non ancora saldate</h3>
-        <div id="satispayList" class="space-y-3"></div>
+    <div class="mx-4 mt-8 space-y-3" id="satispayList"></div>
+
+    <div id="modalVoucher" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+        <div class="bg-white w-full max-w-sm rounded-[2rem] p-8">
+            <h2 class="text-xl font-black mb-4">Aggiungi Buoni</h2>
+            <p class="text-xs text-gray-500 mb-6">Quanti nuovi buoni da 6€ hai ricevuto?</p>
+            <input type="number" id="newVouchers" class="w-full p-4 bg-slate-100 rounded-2xl font-bold text-center text-2xl mb-6" placeholder="0">
+            <div class="flex gap-4">
+                <button onclick="document.getElementById('modalVoucher').classList.add('hidden')" class="flex-1 py-3 text-gray-400 font-bold">Annulla</button>
+                <button onclick="addVouchers()" class="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold">Carica</button>
+            </div>
+        </div>
     </div>
 
     <nav class="fixed bottom-0 w-full bg-white border-t flex justify-around p-4 text-[10px] font-bold text-gray-400 z-40">
@@ -49,54 +60,61 @@
         const SUPABASE_URL = 'https://vdbgzqzquuvvcqgntsgh.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkYmd6cXpxdXV2dmNxZ250c2doIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5MjY2MDEsImV4cCI6MjA4NzUwMjYwMX0.pTjNAQ6dYb0zNbL7DW2yf9ud50tsn1GrfIsX1XA0oXE';
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-        const VALORE_INIZIALE_BUONI = 200;
+        const VALORE_SINGOLO_BUONO = 6;
 
         async function loadSatispay() {
-            // 1. Prendi TUTTE le transazioni Satispay per i buoni
-            const { data: allTrans } = await supabaseClient
-                .from('transactions')
-                .select('*')
-                .eq('metodo_pagamento', 'Satispay');
+            // 1. Recupera totale buoni caricati
+            const { data: wallet } = await supabaseClient.from('voucher_wallet').select('quantita_caricata');
+            const totaleBuoniCaricati = wallet?.reduce((sum, w) => sum + w.quantita_caricata, 0) || 0;
+            const budgetInizialeEuro = totaleBuoniCaricati * VALORE_SINGOLO_BUONO;
 
-            // 2. Calcola residuo buoni (usa TUTTE le transazioni, anche quelle rimborsate)
-            const totaleSpesoSatispay = allTrans?.reduce((sum, t) => sum + t.importo, 0) || 0;
-            const residuo = Math.max(0, VALORE_INIZIALE_BUONI - totaleSpesoSatispay);
-            const perc = (residuo / VALORE_INIZIALE_BUONI) * 100;
+            // 2. Recupera transazioni
+            const { data: trans } = await supabaseClient.from('transactions').select('*').eq('metodo_pagamento', 'Satispay');
 
-            document.getElementById('buoniResiduo').innerText = `€ ${residuo.toFixed(2)}`;
-            document.getElementById('buoniBar').style.width = perc + '%';
-
-            // 3. Filtra solo quelle NON rimborsate per il debito e la lista
-            const transAperte = allTrans?.filter(t => t.rimborsato === false) || [];
-            let totaleDebito = 0;
+            let buoniConsumatiEuro = 0;
+            let totaleDebitoAperto = 0;
             let listHtml = '';
 
-            transAperte.forEach(t => {
-                totaleDebito += t.importo;
-                listHtml += `
-                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center">
-                    <div>
-                        <p class="font-bold text-slate-800 text-sm">${t.descrizione || t.categoria}</p>
-                        <p class="text-[9px] text-slate-400 font-bold uppercase">${t.data_transazione}</p>
-                    </div>
-                    <p class="font-black text-rose-500">€ ${t.importo.toFixed(2)}</p>
-                </div>`;
+            trans?.forEach(t => {
+                const numBuoniUsati = Math.floor(t.importo / VALORE_SINGOLO_BUONO);
+                const valoreBuoni = numBuoniUsati * VALORE_SINGOLO_BUONO;
+                buoniConsumatiEuro += valoreBuoni;
+
+                if (!t.rimborsato) {
+                    const anticipo = t.importo - valoreBuoni;
+                    totaleDebitoAperto += anticipo;
+                    listHtml += `
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center mb-3">
+                        <div><p class="font-bold text-slate-800 text-sm">${t.descrizione || t.categoria}</p>
+                        <p class="text-[9px] text-slate-400 font-bold uppercase">Usi ${numBuoniUsati} buoni</p></div>
+                        <p class="font-black text-rose-500">€ ${anticipo.toFixed(2)}</p>
+                    </div>`;
+                }
             });
 
-            document.getElementById('satispayDebt').innerText = `€ ${totaleDebito.toFixed(2)}`;
-            document.getElementById('satispayList').innerHTML = listHtml || '<p class="text-center text-slate-300 py-10 text-xs italic">Nessun rimborso in attesa</p>';
+            // Update UI
+            const residuoEuro = budgetInizialeEuro - buoniConsumatiEuro;
+            document.getElementById('buoniResiduo').innerText = `€ ${residuoEuro.toFixed(2)}`;
+            document.getElementById('buoniConteggio').innerText = `${Math.floor(residuoEuro/6)} buoni rimasti`;
+            document.getElementById('buoniBar').style.width = budgetInizialeEuro > 0 ? (residuoEuro / budgetInizialeEuro * 100) + '%' : '0%';
+            document.getElementById('satispayDebt').innerText = `€ ${totaleDebitoAperto.toFixed(2)}`;
+            document.getElementById('satispayList').innerHTML = listHtml || '<p class="text-center text-slate-300 py-10 text-xs italic">Tutto saldato!</p>';
+        }
+
+        async function addVouchers() {
+            const qty = parseInt(document.getElementById('newVouchers').value);
+            if(qty > 0) {
+                await supabaseClient.from('voucher_wallet').insert([{ quantita_caricata: qty }]);
+                document.getElementById('modalVoucher').classList.add('hidden');
+                document.getElementById('newVouchers').value = '';
+                loadSatispay();
+            }
         }
 
         async function resetSatispay() {
-            if(confirm("Azzerare il debito? Il valore dei buoni NON verrà toccato.")) {
-                const { error } = await supabaseClient
-                    .from('transactions')
-                    .update({ rimborsato: true })
-                    .eq('metodo_pagamento', 'Satispay')
-                    .eq('rimborsato', false);
-
-                if(!error) loadSatispay();
+            if(confirm("Segnare come rimborsati?")) {
+                await supabaseClient.from('transactions').update({ rimborsato: true }).eq('metodo_pagamento', 'Satispay').eq('rimborsato', false);
+                loadSatispay();
             }
         }
 
